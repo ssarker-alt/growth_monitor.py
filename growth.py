@@ -213,5 +213,27 @@ with right:
                 if sample_folder.exists():
                     shutil.rmtree(sample_folder)
                 st.success(f"Deleted sample {sample_view} and all
+                             if st.button(f"❌ Delete sample {sample_view} and all its data", key=f"del_sample_{sample_view}"):
+                # Remove from samples.json
+                if sample_view in samples:
+                    del samples[sample_view]
+                    save_samples(samples)
+                # Remove observations
+                obs_df = obs_df[obs_df["sample_id"] != sample_view]
+                obs_df.to_csv(OBS_FILE, index=False)
+                # Remove images
+                sample_folder = IMAGES_DIR / sample_view
+                if sample_folder.exists():
+                    shutil.rmtree(sample_folder)
+                st.success(f"Deleted sample {sample_view} and all related data.")
+
+            # List observations with delete buttons
+            for idx, row in s_obs.iterrows():
+                st.image(row["image_path"], caption=f"{row['timestamp']} — {row['coverage_pct']}%")
+                if st.button(f"Delete this observation ({row['timestamp']})", key=f"del_obs_{idx}"):
+                    obs_df = obs_df.drop(idx)
+                    obs_df.to_csv(OBS_FILE, index=False)
+                    st.success("Observation deleted.")
+
 
 
