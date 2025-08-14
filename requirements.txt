@@ -1,1 +1,7 @@
+streamlit
+pillow
+pillow-heif
+opencv-python
+numpy
+pandas
 
