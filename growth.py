@@ -2,12 +2,13 @@
 import json
 from datetime import datetime
 from pathlib import Path
-import cv2  #type: ignore
-import numpy as np #type: ignore
-import pandas as pd #type: ignore
-from PIL import Image #type: ignore
-import pillow_heif #type: ignore
-import streamlit as st  #type: ignore
+import cv2  # type: ignore
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
+from PIL import Image  # type: ignore
+import pillow_heif  # type: ignore
+import streamlit as st  # type: ignore
+import shutil
 
 # --- Paths ---
 DATA_DIR = Path("growth_data")
@@ -54,18 +55,14 @@ def save_image(pil_img, sample_id):
 def detect_growth(pil_img):
     img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2HSV)
-
     green_mask = cv2.inRange(hsv, (30, 40, 40), (90, 255, 255))
     brown_mask = cv2.inRange(hsv, (10, 50, 20), (30, 255, 200))
-
     green_count = int(np.sum(green_mask > 0))
     brown_count = int(np.sum(brown_mask > 0))
     combined = cv2.bitwise_or(green_mask, brown_mask)
-
     coverage = (np.sum(combined > 0) / combined.size) * 100 if combined.size > 0 else 0
     highlighted = img_cv.copy()
     highlighted[combined > 0] = [255, 255, 255]
-
     return {
         "coverage_pct": round(coverage, 2),
         "green_pixels": green_count,
@@ -85,6 +82,10 @@ def compute_health(coverage_pct, green_pixels, brown_pixels, change):
 st.set_page_config(page_title="🌿 Growth Monitor", layout="wide")
 st.title("🌿 Organism Growth Monitor")
 
+# Session state for refresh
+if "refresh" not in st.session_state:
+    st.session_state.refresh = False
+
 samples = load_samples()
 
 # Sidebar: Manage Samples
@@ -97,7 +98,7 @@ with st.sidebar:
             samples[sid] = {"species": species, "start_date": datetime.utcnow().date().isoformat()}
             save_samples(samples)
             st.success(f"Created {sid}")
-            st.experimental_rerun()
+            st.session_state.refresh = True
         else:
             st.error("Invalid or duplicate Sample ID")
     st.write("---")
@@ -114,7 +115,11 @@ with st.sidebar:
                 del samples[s_id]
                 save_samples(samples)
                 st.success(f"Deleted {s_id}")
-                st.experimental_rerun()
+                st.session_state.refresh = True
+
+if st.session_state.refresh:
+    st.session_state.refresh = False
+    st.experimental_rerun()
 
 # Left: Add Observation
 left, right = st.columns([1.3, 1])
@@ -159,8 +164,8 @@ with left:
                 "light_exposure": light,
                 "notes": notes
             })
-            st.success("Observation saved!")
-            st.experimental_rerun()
+            st.success("Observation saved.")
+            st.session_state.refresh = True
 
 # Right: Dashboard
 with right:
@@ -191,35 +196,22 @@ with right:
         # Show table
         st.dataframe(last.sort_values("HEALTH", ascending=False))
 
-        # Select a sample to view/delete
+        # Select a sample to view/manage
         sample_view = st.selectbox("View or manage sample", last["sample_id"])
         if sample_view:
             s_obs = obs_df[obs_df["sample_id"] == sample_view].sort_values("timestamp")
             st.line_chart(s_obs.set_index("timestamp")["coverage_pct"])
 
-            # Delete sample button
+            # Delete sample
             if st.button(f"❌ Delete sample {sample_view} and all its data", key=f"del_sample_{sample_view}"):
-                # Remove from samples.json
                 if sample_view in samples:
                     del samples[sample_view]
                     save_samples(samples)
-                # Remove observations
                 obs_df = obs_df[obs_df["sample_id"] != sample_view]
                 obs_df.to_csv(OBS_FILE, index=False)
-                # Remove images
                 sample_folder = IMAGES_DIR / sample_view
                 if sample_folder.exists():
-                    import shutil
                     shutil.rmtree(sample_folder)
-                st.success(f"Deleted sample {sample_view} and all related data.")
-                st.experimental_rerun()
+                st.success(f"Deleted sample {sample_view} and all
 
-            # List observations with delete buttons
-            for idx, row in s_obs.iterrows():
-                st.image(row["image_path"], caption=f"{row['timestamp']} — {row['coverage_pct']}%")
-                if st.button(f"Delete this observation ({row['timestamp']})", key=f"del_obs_{idx}"):
-                    obs_df = obs_df.drop(idx)
-                    obs_df.to_csv(OBS_FILE, index=False)
-                    st.success("Observation deleted.")
-                    st.experimental_rerun()
 
