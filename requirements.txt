@@ -3,6 +3,6 @@ pillow
 pillow-heif
 numpy
 pandas
-opencv-python
+opencv-python-headless
 
 
