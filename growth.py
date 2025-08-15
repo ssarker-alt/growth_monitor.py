@@ -15,6 +15,7 @@ DATA_DIR = Path("growth_data")
 SAMPLES_FILE = DATA_DIR / "samples.json"
 OBS_FILE = DATA_DIR / "observations.csv"
 IMAGES_DIR = DATA_DIR / "images"
+
 for p in [DATA_DIR, IMAGES_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -30,9 +31,11 @@ def save_samples(samples):
 def load_observations():
     if OBS_FILE.exists():
         return pd.read_csv(OBS_FILE, parse_dates=["timestamp"])
-    cols = ["timestamp", "sample_id", "image_path",
-            "coverage_pct", "green_pixels", "brown_pixels",
-            "humidity", "light_exposure", "notes"]
+    cols = [
+        "timestamp", "sample_id", "image_path",
+        "coverage_pct", "green_pixels", "brown_pixels",
+        "humidity", "light_exposure", "notes"
+    ]
     return pd.DataFrame(columns=cols)
 
 def save_observation(row):
@@ -55,14 +58,20 @@ def save_image(pil_img, sample_id):
 def detect_growth(pil_img):
     img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2HSV)
+
+    # Green and brown pixel detection ranges
     green_mask = cv2.inRange(hsv, (30, 40, 40), (90, 255, 255))
     brown_mask = cv2.inRange(hsv, (10, 50, 20), (30, 255, 200))
+
     green_count = int(np.sum(green_mask > 0))
     brown_count = int(np.sum(brown_mask > 0))
     combined = cv2.bitwise_or(green_mask, brown_mask)
+
     coverage = (np.sum(combined > 0) / combined.size) * 100 if combined.size > 0 else 0
+
     highlighted = img_cv.copy()
     highlighted[combined > 0] = [255, 255, 255]
+
     return {
         "coverage_pct": round(coverage, 2),
         "green_pixels": green_count,
@@ -93,15 +102,21 @@ with st.sidebar:
     st.header("Sample Management")
     sid = st.text_input("New Sample ID")
     species = st.text_input("Species / Notes")
+
     if st.button("Create Sample"):
         if sid and sid not in samples:
-            samples[sid] = {"species": species, "start_date": datetime.utcnow().date().isoformat()}
+            samples[sid] = {
+                "species": species,
+                "start_date": datetime.utcnow().date().isoformat()
+            }
             save_samples(samples)
             st.success(f"Created {sid}")
             st.session_state.refresh = True
         else:
             st.error("Invalid or duplicate Sample ID")
+
     st.write("---")
+
     for s_id in list(samples.keys()):
         st.write(f"**{s_id}** — {samples[s_id]['species']}")
         if st.button(f"Delete {s_id}", key=f"del_{s_id}"):
@@ -119,7 +134,7 @@ with st.sidebar:
 
 if st.session_state.refresh:
     st.session_state.refresh = False
-    st.experimental_rerun()
+    st.rerun()
 
 # Left: Add Observation
 left, right = st.columns([1.3, 1])
@@ -128,6 +143,7 @@ with left:
     sample_choice = st.selectbox("Sample", list(samples.keys()) or ["(none)"])
     src = st.radio("Image Source", ["Upload", "Camera"])
     image = None
+
     if src == "Upload":
         file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png", "heic"])
         if file:
@@ -150,7 +166,10 @@ with left:
 
         if st.button("Save Observation"):
             if sample_choice not in samples:
-                samples[sample_choice] = {"species": "", "start_date": datetime.utcnow().date().isoformat()}
+                samples[sample_choice] = {
+                    "species": "",
+                    "start_date": datetime.utcnow().date().isoformat()
+                }
                 save_samples(samples)
             img_path = save_image(image, sample_choice)
             save_observation({
@@ -177,6 +196,7 @@ with right:
     else:
         last = obs_df.sort_values("timestamp").groupby("sample_id").last().reset_index()
         changes, scores, ratios = [], [], []
+
         for sid in last["sample_id"]:
             s_obs = obs_df[obs_df["sample_id"] == sid].sort_values("timestamp")
             change = s_obs.iloc[-1]["coverage_pct"] - s_obs.iloc[-2]["coverage_pct"] if len(s_obs) > 1 else None
@@ -189,6 +209,7 @@ with right:
             changes.append(change)
             scores.append(score)
             ratios.append(ratio)
+
         last["Δ since prev"] = changes
         last["HEALTH"] = scores
         last["Green Ratio"] = ratios
@@ -212,19 +233,6 @@ with right:
                 sample_folder = IMAGES_DIR / sample_view
                 if sample_folder.exists():
                     shutil.rmtree(sample_folder)
-                st.success(f"Deleted sample {sample_view} and all
-                             if st.button(f"❌ Delete sample {sample_view} and all its data", key=f"del_sample_{sample_view}"):
-                # Remove from samples.json
-                if sample_view in samples:
-                    del samples[sample_view]
-                    save_samples(samples)
-                # Remove observations
-                obs_df = obs_df[obs_df["sample_id"] != sample_view]
-                obs_df.to_csv(OBS_FILE, index=False)
-                # Remove images
-                sample_folder = IMAGES_DIR / sample_view
-                if sample_folder.exists():
-                    shutil.rmtree(sample_folder)
                 st.success(f"Deleted sample {sample_view} and all related data.")
 
             # List observations with delete buttons
@@ -234,6 +242,7 @@ with right:
                     obs_df = obs_df.drop(idx)
                     obs_df.to_csv(OBS_FILE, index=False)
                     st.success("Observation deleted.")
+
 
 
 
